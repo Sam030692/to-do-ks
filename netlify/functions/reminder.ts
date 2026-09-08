@@ -3,14 +3,15 @@ import { getDatabase } from '@netlify/database'
 import nodemailer from 'nodemailer'
 import webpush from 'web-push'
 import { getOrCreateVapidConfig } from './_shared/vapid'
+import { getReminderWebhookToken } from './_shared/qstash'
 
 function escapeHtml(input: string) {
   return input.replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]!))
 }
 
 export default async (req: Request) => {
-  const webhookSecret = Netlify.env.get('REMINDER_WEBHOOK_SECRET')
-  if (!webhookSecret || req.headers.get('authorization') !== `Bearer ${webhookSecret}`) {
+  const webhookToken = getReminderWebhookToken()
+  if (!webhookToken || req.headers.get('authorization') !== `Bearer ${webhookToken}`) {
     return new Response('Unauthorized', { status: 401 })
   }
 
