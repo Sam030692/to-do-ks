@@ -14,6 +14,7 @@
     "@netlify/database": "latest",
     "@netlify/functions": "latest",
     "@netlify/identity": "latest",
+    "@upstash/qstash": "latest",
     "lucide-react": "latest",
     "luxon": "latest",
     "nodemailer": "latest",
