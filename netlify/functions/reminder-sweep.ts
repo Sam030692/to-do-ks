@@ -56,12 +56,25 @@ export default async () => {
         console.warn('Email reminder pending but Gmail SMTP is not configured')
       } else {
         try {
-          const detailsHtml = details ? `<p style="color:#555">${escapeHtml(details)}</p>` : ''
+          const subject = `Reminder: ${taskName} at ${timeText}`
+          const plainText = [
+            `Reminder: ${taskName}`,
+            `Scheduled for ${timeText}, in 10 minutes.`,
+            details ? `\n${details}` : '',
+            `\nOpen To-do Today: ${siteUrl}`,
+          ].filter(Boolean).join('\n')
+
+          const detailsHtml = details ? `<p>${escapeHtml(details)}</p>` : ''
+          const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#222"><p><strong>Reminder: ${escapeHtml(taskName)}</strong></p><p>Scheduled for ${escapeHtml(timeText)}, in 10 minutes.</p>${detailsHtml}<p><a href="${siteUrl}">Open To-do Today</a></p></div>`
+
           await transporter.sendMail({
             from: `"To-do Today" <${gmailUser}>`,
             to: String(task.notification_email),
-            subject: `${taskName} in 10 minutes`,
-            html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px"><div style="font-size:13px;color:#777;margin-bottom:20px">TO-DO TODAY</div><h1 style="font-size:24px;margin:0 0 8px">${escapeHtml(taskName)}</h1><p style="font-size:16px">Scheduled for <strong>${escapeHtml(timeText)}</strong>, in 10 minutes.</p>${detailsHtml}<p style="margin-top:28px"><a href="${siteUrl}" style="background:#111;color:white;padding:12px 18px;border-radius:10px;text-decoration:none">Open To-do Today</a></p></div>`,
+            replyTo: gmailUser,
+            subject,
+            text: plainText,
+            html,
+            priority: 'normal',
           })
           await db.sql`UPDATE tasks SET email_sent_at = NOW() WHERE id = ${taskId} AND email_sent_at IS NULL`
         } catch (error) {
