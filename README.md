@@ -53,14 +53,13 @@ GMAIL_APP_PASSWORD=your-16-character-app-password
 
 ## QStash reminder scheduling
 
-Create a QStash account and add:
+Create a QStash account and add one additional Netlify secret:
 
 ```text
 QSTASH_TOKEN=...
-REMINDER_WEBHOOK_SECRET=...
 ```
 
-`REMINDER_WEBHOOK_SECRET` should be a long random value and stored as a Netlify secret. It is forwarded only to the private reminder endpoint so random callers cannot trigger reminder sends.
+The reminder webhook authentication token is derived server-side from the existing Gmail app password; the Gmail password itself is never sent to QStash.
 
 When a timed task is created, QStash holds one delayed message until 10 minutes before the task. Editing, completing, or deleting the task cancels the old pending message; editing or restoring schedules a new one when appropriate.
 
@@ -78,7 +77,7 @@ Users enable Push from Settings. On supported iOS/iPadOS versions, install the P
 - Tasks without a time do not get reminders.
 - Completed/deleted tasks cancel their pending delayed reminder.
 - Edited tasks cancel the stale reminder and schedule a replacement.
-- The reminder webhook validates an app-only bearer secret before accessing task data.
+- The reminder webhook validates an app-only bearer token before accessing task data.
 - Email and Web Push have separate sent markers so retries do not intentionally duplicate a channel that already succeeded.
 - Netlify is not polled in the background.
 
@@ -88,7 +87,6 @@ Users enable Push from Settings. On supported iOS/iPadOS versions, install the P
 GMAIL_USER
 GMAIL_APP_PASSWORD
 QSTASH_TOKEN
-REMINDER_WEBHOOK_SECRET
 ```
 
 After adding or changing environment variables, trigger one production deploy.
@@ -119,7 +117,6 @@ npm run dev
 - [x] Gmail username configured
 - [x] Gmail app password configured
 - [ ] QStash token configured
-- [ ] Reminder webhook secret configured
 - [ ] One production deploy after the event-driven reminder changes
 - [ ] Enable Web Push
 - [ ] Create a task about 12 minutes ahead and verify email + push delivery
