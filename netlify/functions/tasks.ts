@@ -2,7 +2,6 @@ import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { DateTime } from 'luxon'
 import { requireUser, json, errorResponse } from './_shared/auth'
-import { cancelReminder, computeTimes, scheduleReminder } from './_shared/reminders'
 
 type TaskBody = {
   taskName?: string
@@ -15,6 +14,16 @@ type TaskBody = {
 }
 
 const validPriorities = new Set(['high', 'medium', 'low'])
+
+function computeTimes(taskDate: string, taskTime: string | null, timezone: string, reminderMinutes = 10) {
+  if (!taskTime) return { dueAtUtc: null, reminderAtUtc: null }
+  const local = DateTime.fromISO(`${taskDate}T${taskTime}`, { zone: timezone })
+  if (!local.isValid) throw new Error('Invalid task date, time, or timezone')
+  return {
+    dueAtUtc: local.toUTC().toISO(),
+    reminderAtUtc: local.minus({ minutes: reminderMinutes }).toUTC().toISO(),
+  }
+}
 
 export default async (req: Request, context: Context) => {
   try {
@@ -53,13 +62,6 @@ export default async (req: Request, context: Context) => {
         VALUES (${user.id}, ${user.email}, ${taskDate}, ${taskName}, ${body.details?.trim() || ''}, ${priority}, ${taskTime}, ${timezone}, ${dueAtUtc}, ${reminderAtUtc})
         RETURNING id, task_date::text AS task_date, task_name, details, priority, task_time::text AS task_time, timezone, due_at_utc, reminder_at_utc, completed_at, created_at
       `
-
-      if (reminderAtUtc && dueAtUtc && DateTime.fromISO(dueAtUtc) > DateTime.utc()) {
-        const messageId = await scheduleReminder({
-          url: `${context.site.url}/api/reminder`, taskId: Number(task.id), userId: user.id, reminderAtUtc,
-        })
-        if (messageId) await db.sql`UPDATE tasks SET qstash_message_id = ${messageId} WHERE id = ${task.id}`
-      }
       return json({ task }, 201)
     }
 
@@ -71,24 +73,16 @@ export default async (req: Request, context: Context) => {
       const body = (await req.json()) as TaskBody
 
       if (typeof body.completed === 'boolean' && Object.keys(body).length === 1) {
-        if (body.completed) await cancelReminder(existing.qstash_message_id as string | null)
         const [task] = await db.sql`
           UPDATE tasks
           SET completed_at = ${body.completed ? new Date().toISOString() : null},
-              qstash_message_id = ${body.completed ? null : existing.qstash_message_id},
               updated_at = NOW()
           WHERE id = ${id} AND user_id = ${user.id}
           RETURNING id, task_date::text AS task_date, task_name, details, priority, task_time::text AS task_time, timezone, due_at_utc, reminder_at_utc, completed_at, created_at
         `
-        if (!body.completed && existing.reminder_at_utc && existing.due_at_utc && DateTime.fromJSDate(new Date(String(existing.due_at_utc))).toUTC() > DateTime.utc()) {
-          const reminderAtUtc = DateTime.fromJSDate(new Date(String(existing.reminder_at_utc))).toUTC().toISO()
-          const messageId = await scheduleReminder({ url: `${context.site.url}/api/reminder`, taskId: id, userId: user.id, reminderAtUtc })
-          if (messageId) await db.sql`UPDATE tasks SET qstash_message_id = ${messageId} WHERE id = ${id}`
-        }
         return json({ task })
       }
 
-      await cancelReminder(existing.qstash_message_id as string | null)
       const taskName = body.taskName?.trim() || String(existing.task_name)
       const details = body.details !== undefined ? body.details.trim() : String(existing.details)
       const priority = body.priority || (existing.priority as 'high' | 'medium' | 'low')
@@ -104,15 +98,10 @@ export default async (req: Request, context: Context) => {
         WHERE id = ${id} AND user_id = ${user.id}
         RETURNING id, task_date::text AS task_date, task_name, details, priority, task_time::text AS task_time, timezone, due_at_utc, reminder_at_utc, completed_at, created_at
       `
-      if (!task.completed_at && reminderAtUtc && dueAtUtc && DateTime.fromISO(dueAtUtc) > DateTime.utc()) {
-        const messageId = await scheduleReminder({ url: `${context.site.url}/api/reminder`, taskId: id, userId: user.id, reminderAtUtc })
-        if (messageId) await db.sql`UPDATE tasks SET qstash_message_id = ${messageId} WHERE id = ${id}`
-      }
       return json({ task })
     }
 
     if (req.method === 'DELETE') {
-      await cancelReminder(existing.qstash_message_id as string | null)
       await db.sql`DELETE FROM tasks WHERE id = ${id} AND user_id = ${user.id}`
       return new Response(null, { status: 204 })
     }
