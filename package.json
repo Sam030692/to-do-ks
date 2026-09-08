@@ -17,6 +17,7 @@
     "@upstash/qstash": "latest",
     "lucide-react": "latest",
     "luxon": "latest",
+    "nodemailer": "latest",
     "react": "latest",
     "react-dom": "latest",
     "resend": "latest",
@@ -24,12 +25,13 @@
   },
   "devDependencies": {
     "@types/luxon": "latest",
+    "@types/node": "latest",
+    "@types/nodemailer": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/web-push": "latest",
     "@vitejs/plugin-react": "latest",
     "typescript": "latest",
-    "vite": "latest",
-    "@types/node": "latest"
+    "vite": "latest"
   }
 }
