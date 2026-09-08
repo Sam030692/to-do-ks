@@ -10,6 +10,17 @@ type VapidConfig = {
 export async function getOrCreateVapidConfig(): Promise<VapidConfig> {
   const db = getDatabase()
 
+  await db.sql`
+    CREATE TABLE IF NOT EXISTS app_config (
+      id SMALLINT PRIMARY KEY CHECK (id = 1),
+      vapid_public_key TEXT NOT NULL,
+      vapid_private_key TEXT NOT NULL,
+      vapid_subject TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+
   const [existing] = await db.sql`
     SELECT vapid_public_key, vapid_private_key, vapid_subject
     FROM app_config
