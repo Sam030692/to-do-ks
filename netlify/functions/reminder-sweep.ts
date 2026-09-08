@@ -2,6 +2,7 @@ import type { Config } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import nodemailer from 'nodemailer'
 import webpush from 'web-push'
+import { getOrCreateVapidConfig } from './_shared/vapid'
 
 function escapeHtml(input: string) {
   return input.replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]!))
@@ -12,10 +13,7 @@ export default async () => {
   const gmailUser = Netlify.env.get('GMAIL_USER')
   const gmailAppPassword = Netlify.env.get('GMAIL_APP_PASSWORD')
   const siteUrl = Netlify.env.get('URL') || 'https://to-do-ks.netlify.app'
-
-  const vapidPublic = Netlify.env.get('VAPID_PUBLIC_KEY')
-  const vapidPrivate = Netlify.env.get('VAPID_PRIVATE_KEY')
-  const vapidSubject = Netlify.env.get('VAPID_SUBJECT')
+  const vapid = await getOrCreateVapidConfig()
 
   const rows = await db.sql`
     SELECT
@@ -45,9 +43,7 @@ export default async () => {
       })
     : null
 
-  if (vapidPublic && vapidPrivate && vapidSubject) {
-    webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate)
-  }
+  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey)
 
   for (const task of rows) {
     const taskId = Number(task.id)
@@ -75,34 +71,30 @@ export default async () => {
     }
 
     if (Boolean(task.push_enabled) && !task.push_sent_at) {
-      if (!vapidPublic || !vapidPrivate || !vapidSubject) {
-        console.warn('Push reminder pending but VAPID is not configured')
-      } else {
-        const subscriptions = await db.sql`SELECT id, subscription FROM push_subscriptions WHERE user_id = ${String(task.user_id)}`
-        let sent = 0
-        for (const row of subscriptions) {
-          try {
-            await webpush.sendNotification(
-              row.subscription as webpush.PushSubscription,
-              JSON.stringify({
-                title: `${taskName} in 10 minutes`,
-                body: details || `Scheduled for ${timeText}`,
-                url: '/',
-                tag: `task-${taskId}`,
-              }),
-            )
-            sent++
-          } catch (error: any) {
-            if (error?.statusCode === 404 || error?.statusCode === 410) {
-              await db.sql`DELETE FROM push_subscriptions WHERE id = ${row.id}`
-            } else {
-              console.error('Push reminder failed', taskId, error)
-            }
+      const subscriptions = await db.sql`SELECT id, subscription FROM push_subscriptions WHERE user_id = ${String(task.user_id)}`
+      let sent = 0
+      for (const row of subscriptions) {
+        try {
+          await webpush.sendNotification(
+            row.subscription as webpush.PushSubscription,
+            JSON.stringify({
+              title: `${taskName} in 10 minutes`,
+              body: details || `Scheduled for ${timeText}`,
+              url: '/',
+              tag: `task-${taskId}`,
+            }),
+          )
+          sent++
+        } catch (error: any) {
+          if (error?.statusCode === 404 || error?.statusCode === 410) {
+            await db.sql`DELETE FROM push_subscriptions WHERE id = ${row.id}`
+          } else {
+            console.error('Push reminder failed', taskId, error)
           }
         }
-        if (sent > 0) {
-          await db.sql`UPDATE tasks SET push_sent_at = NOW() WHERE id = ${taskId} AND push_sent_at IS NULL`
-        }
+      }
+      if (sent > 0) {
+        await db.sql`UPDATE tasks SET push_sent_at = NOW() WHERE id = ${taskId} AND push_sent_at IS NULL`
       }
     }
   }
