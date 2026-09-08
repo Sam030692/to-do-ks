@@ -1,8 +1,17 @@
+import { createHmac } from 'node:crypto'
 import { Client } from '@upstash/qstash'
 
 function getClient() {
   const token = Netlify.env.get('QSTASH_TOKEN')
   return token ? new Client({ token }) : null
+}
+
+export function getReminderWebhookToken() {
+  const gmailAppPassword = Netlify.env.get('GMAIL_APP_PASSWORD')
+  if (!gmailAppPassword) return null
+  return createHmac('sha256', gmailAppPassword)
+    .update('todo-today:qstash-reminder:v1')
+    .digest('hex')
 }
 
 export async function cancelReminder(messageId?: string | null) {
@@ -18,10 +27,10 @@ export async function cancelReminder(messageId?: string | null) {
 
 export async function scheduleReminder(taskId: number, reminderAtUtc?: string | null, dueAtUtc?: string | null) {
   const client = getClient()
-  const secret = Netlify.env.get('REMINDER_WEBHOOK_SECRET')
+  const webhookToken = getReminderWebhookToken()
   const siteUrl = Netlify.env.get('URL') || 'https://to-do-ks.netlify.app'
 
-  if (!client || !secret || !reminderAtUtc || !dueAtUtc) return null
+  if (!client || !webhookToken || !reminderAtUtc || !dueAtUtc) return null
 
   const dueMs = Date.parse(dueAtUtc)
   const reminderMs = Date.parse(reminderAtUtc)
@@ -35,7 +44,7 @@ export async function scheduleReminder(taskId: number, reminderAtUtc?: string | 
       body: { taskId, reminderAtUtc },
       delay: delaySeconds,
       headers: {
-        Authorization: `Bearer ${secret}`,
+        Authorization: `Bearer ${webhookToken}`,
       },
       label: `todo-task-${taskId}`,
     })
