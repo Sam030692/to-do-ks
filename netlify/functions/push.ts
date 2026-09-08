@@ -1,6 +1,7 @@
 import type { Config } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { requireUser, json, errorResponse } from './_shared/auth'
+import { getOrCreateVapidConfig } from './_shared/vapid'
 
 export default async (req: Request) => {
   try {
@@ -8,7 +9,8 @@ export default async (req: Request) => {
     const db = getDatabase()
 
     if (req.method === 'GET') {
-      return json({ publicKey: Netlify.env.get('VAPID_PUBLIC_KEY') || '' })
+      const vapid = await getOrCreateVapidConfig()
+      return json({ publicKey: vapid.publicKey })
     }
 
     const body = await req.json() as { subscription?: PushSubscriptionJSON; endpoint?: string }
