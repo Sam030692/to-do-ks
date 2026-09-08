@@ -2,6 +2,7 @@ import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { DateTime } from 'luxon'
 import { requireUser, json, errorResponse } from './_shared/auth'
+import { cancelReminder, scheduleReminder } from './_shared/qstash'
 
 type TaskBody = {
   taskName?: string
@@ -62,7 +63,13 @@ export default async (req: Request, context: Context) => {
         VALUES (${user.id}, ${user.email}, ${taskDate}, ${taskName}, ${body.details?.trim() || ''}, ${priority}, ${taskTime}, ${timezone}, ${dueAtUtc}, ${reminderAtUtc})
         RETURNING id, task_date::text AS task_date, task_name, details, priority, task_time::text AS task_time, timezone, due_at_utc, reminder_at_utc, completed_at, created_at
       `
-      return json({ task }, 201)
+
+      const messageId = await scheduleReminder(Number(task.id), reminderAtUtc, dueAtUtc)
+      if (messageId) {
+        await db.sql`UPDATE tasks SET qstash_message_id = ${messageId}, updated_at = NOW() WHERE id = ${Number(task.id)}`
+      }
+
+      return json({ task, reminderScheduled: Boolean(messageId) }, 201)
     }
 
     if (!id || Number.isNaN(id)) return json({ error: 'Task id required' }, 400)
@@ -73,15 +80,28 @@ export default async (req: Request, context: Context) => {
       const body = (await req.json()) as TaskBody
 
       if (typeof body.completed === 'boolean' && Object.keys(body).length === 1) {
+        await cancelReminder(existing.qstash_message_id ? String(existing.qstash_message_id) : null)
+
         const [task] = await db.sql`
           UPDATE tasks
           SET completed_at = ${body.completed ? new Date().toISOString() : null},
+              qstash_message_id = NULL,
               updated_at = NOW()
           WHERE id = ${id} AND user_id = ${user.id}
           RETURNING id, task_date::text AS task_date, task_name, details, priority, task_time::text AS task_time, timezone, due_at_utc, reminder_at_utc, completed_at, created_at
         `
+
+        if (!body.completed && existing.reminder_at_utc && existing.due_at_utc) {
+          const messageId = await scheduleReminder(id, String(existing.reminder_at_utc), String(existing.due_at_utc))
+          if (messageId) {
+            await db.sql`UPDATE tasks SET qstash_message_id = ${messageId}, updated_at = NOW() WHERE id = ${id}`
+          }
+        }
+
         return json({ task })
       }
+
+      await cancelReminder(existing.qstash_message_id ? String(existing.qstash_message_id) : null)
 
       const taskName = body.taskName?.trim() || String(existing.task_name)
       const details = body.details !== undefined ? body.details.trim() : String(existing.details)
@@ -98,10 +118,17 @@ export default async (req: Request, context: Context) => {
         WHERE id = ${id} AND user_id = ${user.id}
         RETURNING id, task_date::text AS task_date, task_name, details, priority, task_time::text AS task_time, timezone, due_at_utc, reminder_at_utc, completed_at, created_at
       `
-      return json({ task })
+
+      const messageId = await scheduleReminder(id, reminderAtUtc, dueAtUtc)
+      if (messageId) {
+        await db.sql`UPDATE tasks SET qstash_message_id = ${messageId}, updated_at = NOW() WHERE id = ${id}`
+      }
+
+      return json({ task, reminderScheduled: Boolean(messageId) })
     }
 
     if (req.method === 'DELETE') {
+      await cancelReminder(existing.qstash_message_id ? String(existing.qstash_message_id) : null)
       await db.sql`DELETE FROM tasks WHERE id = ${id} AND user_id = ${user.id}`
       return new Response(null, { status: 204 })
     }
