@@ -1,0 +1,16 @@
+{
+  "name": "To-do Today",
+  "short_name": "To-do Today",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f8",
+  "theme_color": "#f6f7f8",
+  "icons": [
+    {
+      "src": "./todo-today-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
