@@ -1,13 +1,19 @@
 {
   "name": "To-do Today",
   "short_name": "To-do Today",
-  "start_url": "./",
+  "id": "/to-do-ks/",
+  "start_url": "/to-do-ks/",
+  "scope": "/to-do-ks/",
   "display": "standalone",
+  "display_override": [
+    "standalone",
+    "browser"
+  ],
   "background_color": "#f6f7f8",
   "theme_color": "#f6f7f8",
   "icons": [
     {
-      "src": "./todo-today-icon.png",
+      "src": "/to-do-ks/todo-today-icon.png?v=3",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
